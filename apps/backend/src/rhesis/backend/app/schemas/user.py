@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field, field_validator
 
@@ -77,6 +77,16 @@ class LocalizationSettings(BaseModel):
     )
     date_format: Optional[str] = Field(None, description="Preferred date format")
     time_format: Optional[str] = Field(None, description="Preferred time format: '12h' or '24h'")
+    prompt_languages: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Languages for generated test prompts (e.g., ['en', 'ja']). "
+            "Supported: 'en' (English), 'ja' (Japanese), 'de' (German), "
+            "'fr' (French), 'es' (Spanish), 'zh' (Chinese), 'ko' (Korean), "
+            "'pt' (Portuguese), 'it' (Italian), 'nl' (Dutch). "
+            "When multiple languages are selected, tests are generated in each language."
+        ),
+    )
 
 
 class PrivacySettings(BaseModel):

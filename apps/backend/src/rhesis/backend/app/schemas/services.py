@@ -20,6 +20,7 @@ class GenerationConfig(BaseModel):
     categories: Optional[List[str]] = None  # Test categories
     topics: Optional[List[str]] = None  # Topics to cover
     additional_context: Optional[str] = None  # Additional context (JSON string)
+    prompt_languages: Optional[List[str]] = None  # Languages for generated prompts (e.g. ['en', 'ja'])
 
 
 class PromptRequest(BaseModel):

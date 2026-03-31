@@ -60,6 +60,20 @@ Use the following default categories:
 Analyze the generation prompt and derive relevant topics that align with the target system's domain and the behaviors/categories being tested.
 {% endif %}
 
+### 5. Prompt Language
+
+{% if prompt_languages and prompt_languages | length > 0 %}
+**IMPORTANT — Language requirement**: Generate each test prompt in the following language(s): **{{ prompt_languages | join(', ') }}**.
+
+{% if prompt_languages | length == 1 %}
+Write ALL prompt text exclusively in **{{ prompt_languages[0] }}**. Do not use any other language for the prompt content.
+{% else %}
+Distribute the {{ num_tests }} test cases across the specified languages as evenly as possible. Each individual prompt must be written entirely in one language — do not mix languages within a single prompt. The `prompt_language_code` field must reflect the actual language code used (e.g., `en`, `ja`, `de`, `fr`, `es`, `zh`, `ko`, `pt`, `it`, `nl`).
+{% endif %}
+{% else %}
+Write all prompts in **English** (language code: `en`) unless the generation prompt itself implies a different language context.
+{% endif %}
+
 ## Generation Approach
 
 For each test case, follow this step-by-step process:

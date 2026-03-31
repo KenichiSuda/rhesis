@@ -20,6 +20,7 @@ class GenerationConfig(BaseModel):
     topics: Optional[List[str]] = None  # Topics
 
     additional_context: Optional[str] = None  # Additional context
+    prompt_languages: Optional[List[str]] = None  # Languages for generated prompts (e.g. ['en', 'ja'])
 
 
 class ConfigSynthesizer(TestSetSynthesizer):

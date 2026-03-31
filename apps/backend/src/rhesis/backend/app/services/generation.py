@@ -121,6 +121,15 @@ async def generate_tests(
             user_id=str(user.id),
         )
 
+    # Inject prompt_languages from user settings if not already set in config
+    if not config.prompt_languages:
+        user_prompt_languages = user.settings.localization.prompt_languages
+        if user_prompt_languages:
+            config = config.model_copy(update={"prompt_languages": user_prompt_languages})
+            logger.info(
+                f"Applying user prompt_languages from settings: {user_prompt_languages}"
+            )
+
     # Get user's configured model
     model = get_user_generation_model(db, user)
 

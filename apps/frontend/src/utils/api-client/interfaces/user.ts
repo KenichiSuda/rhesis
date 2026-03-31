@@ -42,6 +42,7 @@ export interface LocalizationSettings {
   timezone?: string;
   date_format?: string;
   time_format?: '12h' | '24h';
+  prompt_languages?: string[];
 }
 
 export interface PrivacySettings {

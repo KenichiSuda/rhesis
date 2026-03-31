@@ -261,6 +261,11 @@ class LocalizationSettingsAccessor:
         """Get preferred time format."""
         return self._data.get("time_format")
 
+    @property
+    def prompt_languages(self) -> Optional[list]:
+        """Get list of languages for generated test prompts (e.g., ['en', 'ja'])."""
+        return self._data.get("prompt_languages")
+
 
 class PrivacySettingsAccessor:
     """Accessor for privacy settings."""
