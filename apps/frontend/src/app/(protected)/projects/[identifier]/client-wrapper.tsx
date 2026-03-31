@@ -7,6 +7,7 @@ import ProjectContent from '../components/ProjectContent';
 import ProjectEditDrawer from './edit-drawer';
 import ProjectEndpoints from './components/ProjectEndpoints';
 import ProjectTraceMetrics from './components/ProjectTraceMetrics';
+import ProjectPromptLanguages from './components/ProjectPromptLanguages';
 import { Project } from '@/utils/api-client/interfaces/project';
 import { ApiClientFactory } from '@/utils/api-client/client-factory';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
@@ -161,26 +162,35 @@ export default function ClientWrapper({
       <Box sx={{ mt: 3 }}>
         <Typography
           variant="h6"
-          sx={{
-            mb: 2,
-            fontWeight: 600,
-            color: 'text.primary',
-          }}
+          sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}
         >
           Endpoints
         </Typography>
         <ProjectEndpoints projectId={projectId} sessionToken={sessionToken} />
       </Box>
 
+      {/* Prompt Generation Languages Section */}
+      <Box sx={{ mt: 3 }}>
+        <Typography
+          variant="h6"
+          sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}
+        >
+          Prompt Generation Languages
+        </Typography>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <ProjectPromptLanguages
+            project={currentProject}
+            sessionToken={sessionToken}
+            onProjectUpdate={handleUpdateProject}
+          />
+        </Paper>
+      </Box>
+
       {/* Trace Metrics Section */}
       <Box sx={{ mt: 3 }}>
         <Typography
           variant="h6"
-          sx={{
-            mb: 2,
-            fontWeight: 600,
-            color: 'text.primary',
-          }}
+          sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}
         >
           Trace Metrics
         </Typography>
