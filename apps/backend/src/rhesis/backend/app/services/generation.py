@@ -2,6 +2,7 @@ import asyncio
 import logging
 from functools import partial
 from typing import Dict, List, Optional
+from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -85,12 +86,49 @@ def get_source_specifications(
     return source_specifications
 
 
+def get_project_prompt_languages(
+    db: Session,
+    project_id: UUID,
+    organization_id: str,
+    user_id: str,
+) -> Optional[List[str]]:
+    """
+    Fetch prompt_languages from a project's attributes JSONB column.
+
+    Args:
+        db: Database session
+        project_id: Project UUID
+        organization_id: Organization ID for RLS filtering
+        user_id: User ID for RLS filtering
+
+    Returns:
+        List of language codes if set, otherwise None
+    """
+    db_project = crud.get_project(
+        db,
+        project_id=project_id,
+        organization_id=organization_id,
+        user_id=user_id,
+    )
+    if not db_project:
+        logger.warning(f"Project {project_id} not found when resolving prompt_languages")
+        return None
+
+    attributes = db_project.attributes or {}
+    languages = attributes.get("prompt_languages")
+    if languages and isinstance(languages, list) and len(languages) > 0:
+        return languages
+
+    return None
+
+
 async def generate_tests(
     db: Session,
     user: User,
     config: GenerationConfig,
     num_tests: int = 5,
     sources: Optional[List[SourceData]] = None,
+    project_id: Optional[UUID] = None,
 ) -> List[Dict]:
     """
     Generate tests using ConfigSynthesizer.
@@ -103,6 +141,7 @@ async def generate_tests(
         config: SDK GenerationConfig object
         num_tests: Number of tests to generate
         sources: Optional list of sources with database IDs
+        project_id: Optional project UUID to resolve prompt_languages from project attributes
 
     Returns:
         List of test dictionaries (source IDs are embedded in test metadata)
@@ -121,13 +160,18 @@ async def generate_tests(
             user_id=str(user.id),
         )
 
-    # Inject prompt_languages from user settings if not already set in config
-    if not config.prompt_languages:
-        user_prompt_languages = user.settings.localization.prompt_languages
-        if user_prompt_languages:
-            config = config.model_copy(update={"prompt_languages": user_prompt_languages})
+    # Inject prompt_languages from project attributes if not already set in config
+    if not config.prompt_languages and project_id:
+        project_languages = get_project_prompt_languages(
+            db=db,
+            project_id=project_id,
+            organization_id=str(user.organization_id),
+            user_id=str(user.id),
+        )
+        if project_languages:
+            config = config.model_copy(update={"prompt_languages": project_languages})
             logger.info(
-                f"Applying user prompt_languages from settings: {user_prompt_languages}"
+                f"Applying project prompt_languages from project {project_id}: {project_languages}"
             )
 
     # Get user's configured model

@@ -99,6 +99,7 @@ class GenerateTestsRequest(BaseModel):
     sources: Optional[List[SourceData]] = None
     name: Optional[str] = None  # Used only for bulk generation to name the test set
     test_type: Optional[str] = TestSetType.SINGLE_TURN.value
+    project_id: Optional[UUID4] = None  # Used to look up project-level prompt_languages
 
     @field_validator("test_type", mode="before")
     @classmethod

@@ -196,43 +196,6 @@ async def create_chat_completion_endpoint(request: dict):
 async def generate_content_endpoint(request: GenerateContentRequest):
     """
     Generate text using LLM with optional OpenAI-wrapped JSON schema for structured output.
-
-    The schema parameter MUST be in OpenAI-wrapped format. This format is compatible
-    with multiple LLM providers (OpenAI, Vertex AI, etc.) and enables type-safe
-    structured generation without requiring Pydantic model definitions.
-
-    Args:
-        request: Contains prompt and optional OpenAI-wrapped JSON schema for structured output.
-
-    Returns:
-        str or dict: Raw text if no schema provided, validated dict if schema is provided
-
-    Schema Format (Required):
-        The schema must be wrapped in OpenAI's structured output format:
-        ```python
-        {
-            "prompt": "Generate a person's info",
-            "schema": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "PersonInfo",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "age": {"type": "number"}
-                        },
-                        "required": ["name", "age"],
-                        "additionalProperties": false
-                    },
-                    "strict": true
-                }
-            }
-        }
-        ```
-
-    Note: Plain JSON schemas are not supported. The schema must include the
-    "type": "json_schema" wrapper with name, schema, and strict fields.
     """
     try:
         from rhesis.backend.app.constants import DEFAULT_GENERATION_MODEL
@@ -241,10 +204,7 @@ async def generate_content_endpoint(request: GenerateContentRequest):
         prompt = request.prompt
         schema = request.schema_
 
-        # Use the default generation model from constants
-        # This respects the global configuration (currently vertex_ai/gemini-2.0-flash)
         model = get_model(DEFAULT_GENERATION_MODEL)
-
         response = await model.a_generate(prompt, schema=schema)
 
         return response
@@ -264,8 +224,6 @@ async def generate_embedding_endpoint(request: GenerateEmbeddingRequest):
         from rhesis.sdk.models.factory import get_model
 
         text = request.text
-
-        # First arg is provider; "provider/model_name" is resolved in the background
         embedder = get_model(DEFAULT_EMBEDDING_MODEL, model_type="embedding")
         embedding = embedder.generate(text=text)
 
@@ -291,6 +249,7 @@ async def generate_tests_endpoint(
         request: The request containing the prompt, number of tests, and optional sources
             - sources contains SourceData with id
             (name, description, content will be fetched from DB)
+            - project_id: optional, used to look up project-level prompt_languages
         db: Database session
         tenant_context: Tenant context containing organization_id and user_id
         current_user: Current authenticated user
@@ -303,13 +262,14 @@ async def generate_tests_endpoint(
         if not request.config.behaviors:
             raise HTTPException(status_code=400, detail="At least one behavior must be specified")
 
-        # Generate tests synchronously
+        # Generate tests synchronously (project_id passed for prompt_languages lookup)
         tests = await generate_tests(
             db=db,
             user=current_user,
             config=request.config,
             num_tests=request.num_tests,
             sources=request.sources,
+            project_id=request.project_id,
         )
 
         # Return Pydantic model - FastAPI handles serialization
@@ -330,26 +290,8 @@ async def generate_multiturn_tests_endpoint(
 ):
     """
     Generate multi-turn test cases using the MultiTurnSynthesizer.
-
-    Multi-turn tests include structured prompts with goals, instructions, and restrictions
-    for testing LLM agents across multiple conversation turns.
-
-    Args:
-        request: The request containing the generation prompt and optional parameters
-            - generation_prompt: Description of what to test
-            - behavior: Optional behavior type (e.g., "Compliance", "Reliability")
-            - category: Optional category (e.g., "Harmful", "Harmless")
-            - topic: Optional specific topic
-            - num_tests: Number of tests to generate (default: 5)
-        db: Database session
-        tenant_context: Tenant context containing organization_id and user_id
-        current_user: Current authenticated user
-
-    Returns:
-        GenerateMultiTurnTestsResponse: The generated multi-turn test cases
     """
     try:
-        # Prepare config dict from request
         config = {
             "generation_prompt": request.generation_prompt,
             "behavior": request.behavior,
@@ -363,7 +305,6 @@ async def generate_multiturn_tests_endpoint(
             config=config,
             num_tests=request.num_tests,
         )
-        # test_cases is a TestSet dict with a "tests" key containing the array
         return {"tests": test_cases.get("tests", [])}
     except HTTPException:
         raise
@@ -375,36 +316,26 @@ async def generate_multiturn_tests_endpoint(
 async def generate_text(prompt_request: PromptRequest):
     """
     Generate raw text from an arbitrary prompt.
-
-    Args:
-        prompt_request: The request containing the prompt and stream flag
-
-    Returns:
-        TextResponse: The raw text response from the model
     """
     try:
-        # Create a simple message array with the prompt
         messages = [{"role": "user", "content": prompt_request.prompt}]
 
         if prompt_request.stream:
-            # Handle streaming response
             async def generate():
                 response_stream = get_chat_response(
                     messages=messages,
-                    response_format="text",  # Explicitly request text format
+                    response_format="text",
                     stream=True,
                 )
-
                 async for chunk in response_stream:
                     if chunk["choices"][0]["delta"]["content"]:
                         yield f"data: {chunk['choices'][0]['delta']['content']}\n\n"
 
             return StreamingResponse(generate(), media_type="text/event-stream")
 
-        # Non-streaming response
         response = get_chat_response(
             messages=messages,
-            response_format="text",  # Explicitly request text format
+            response_format="text",
             stream=False,
         )
 
@@ -424,24 +355,6 @@ async def generate_test_config(
 ):
     """
     Generate test configuration JSON based on user description.
-
-    This endpoint:
-    1. Fetches all behaviors from the database (filtered by organization)
-    2. Optionally fetches project details if project_id is provided
-    3. Sends the behaviors and project context to the LLM and asks it to select
-       relevant ones based on the prompt
-    4. LLM generates topics and test categories
-
-    Args:
-        request: Contains prompt (description) for test configuration generation,
-            and optional project_id to include project context
-        db: Database session (injected)
-        tenant_context: Organization and user context (injected)
-        current_user: Current authenticated user (injected)
-
-    Returns:
-        TestConfigResponse: JSON containing LLM-selected behaviors (from database), and
-            LLM-generated topics and test categories, each with name and description fields
     """
     try:
         organization_id, user_id = tenant_context
@@ -462,9 +375,7 @@ async def generate_test_config(
         logger.info("Test config generation successful")
         return result
     except ValueError as e:
-        from rhesis.backend.app.utils.execution_validation import (
-            handle_execution_error,
-        )
+        from rhesis.backend.app.utils.execution_validation import handle_execution_error
 
         logger.warning(f"Invalid request for test config generation: {str(e)}")
         http_exception = handle_execution_error(e, operation="generate test configuration")
@@ -474,14 +385,9 @@ async def generate_test_config(
         detail = str(e) if e.args else "Failed to generate test configuration"
         raise HTTPException(status_code=500, detail=detail)
     except Exception as e:
-        logger.error(
-            f"Unexpected error in test config generation: {str(e)}",
-            exc_info=True,
-        )
+        logger.error(f"Unexpected error in test config generation: {str(e)}", exc_info=True)
         error_detail = (
-            str(e)
-            if str(e)
-            else "An unexpected error occurred during test configuration generation"
+            str(e) if str(e) else "An unexpected error occurred during test configuration generation"
         )
         raise HTTPException(status_code=500, detail=error_detail)
 
@@ -494,32 +400,6 @@ async def search_mcp_server(
     current_user: User = Depends(require_current_user_or_token),
     _validate_model=Depends(validate_generation_model),
 ):
-    """
-    Search MCP server for items matching a natural language query.
-
-    Uses an AI agent to intelligently search the connected MCP server and
-    return structured results. The agent automatically selects the appropriate
-    search tools and formats results consistently.
-
-    Args:
-        request: SearchMCPRequest with query and server_name
-
-    Returns:
-        List of items, each containing:
-        - id: Item identifier
-        - url: Direct link to view the item
-        - title: Human-readable item title
-
-    Raises:
-        HTTPException: 500 error if search fails
-
-    Example:
-        POST /mcp/search
-        {
-            "query": "Find pages about authentication",
-            "server_name": "notion"
-        }
-    """
     try:
         organization_id, user_id = tenant_context
         return await search_mcp(request.query, request.tool_id, db, organization_id, user_id)
@@ -535,34 +415,6 @@ async def extract_mcp_item(
     current_user: User = Depends(require_current_user_or_token),
     _validate_model=Depends(validate_generation_model),
 ):
-    """
-    Extract full content from an MCP item as markdown.
-
-    Uses an AI agent to retrieve and convert item content to markdown format.
-    The agent navigates the item structure and extracts all relevant content
-    including text, headings, lists, and nested blocks.
-
-    Args:
-        request: ExtractMCPRequest with either item id or url (or both) and tool_id
-
-    Returns:
-        ExtractMCPResponse containing markdown-formatted content
-
-    Raises:
-        HTTPException: 500 error if extraction fails or item not found
-
-    Example:
-        POST /mcp/extract
-        {
-            "url": "https://notion.so/page-id-from-search",
-            "tool_id": "tool-uuid-123"
-        }
-        OR
-        {
-            "id": "page-id-123",
-            "tool_id": "tool-uuid-123"
-        }
-    """
     try:
         organization_id, user_id = tenant_context
         content = await extract_mcp(
@@ -586,34 +438,6 @@ async def query_mcp_server(
     current_user: User = Depends(require_current_user_or_token),
     _validate_model=Depends(validate_generation_model),
 ):
-    """
-    Execute arbitrary tasks on an MCP server with full flexibility.
-
-    Unlike /search and /extract, this endpoint handles any MCP task with
-    custom prompts and returns detailed execution traces. Use this for
-    complex operations like creating, updating, or analyzing content.
-
-    Args:
-        request: QueryMCPRequest with query, server_name, optional system_prompt and max_iterations
-
-    Returns:
-        QueryMCPResponse with result and execution history
-
-    Raises:
-        HTTPException: 500 error if task execution fails
-
-    Examples:
-        # Create content
-        {"query": "Create a page titled 'Q1 Planning'", "server_name": "notion"}
-
-        # Custom agent behavior
-        {
-            "query": "Analyze authentication issues",
-            "server_name": "github",
-            "system_prompt": "You are a security analyst...",
-            "max_iterations": 15
-        }
-    """
     try:
         organization_id, user_id = tenant_context
         result = await query_mcp(
@@ -638,54 +462,6 @@ async def test_mcp_connection(
     current_user: User = Depends(require_current_user_or_token),
     _validate_model=Depends(validate_generation_model),
 ):
-    """
-    Test MCP connection authentication by calling a tool that requires authentication.
-
-    This endpoint verifies that the MCP connection is properly authenticated by
-    instructing an agent to call a tool that requires authentication. If the
-    connection is not authenticated, a 401 unauthorized error will be detected.
-
-    Args:
-        request: TestMCPConnectionRequest with either:
-            - tool_id: For testing existing tools
-            - provider_type_id + credentials + optional tool_metadata:
-              For testing non-existent tools
-
-    Returns:
-        TestMCPConnectionResponse with:
-        - is_authenticated: str - "Yes" if authentication is valid, "No" otherwise
-        - message: str - Explanation of the authentication status
-
-    Raises:
-        HTTPException: 400 error if validation fails,
-            500 error if test fails due to connection issues
-
-    Examples:
-        # Test existing tool
-        POST /mcp/test-connection
-        {
-            "tool_id": "tool-uuid-123"
-        }
-
-        # Test non-existent tool (standard provider)
-        POST /mcp/test-connection
-        {
-            "provider_type_id": "provider-uuid-123",
-            "credentials": {"NOTION_TOKEN": "ntn_abc123..."}
-        }
-
-        # Test non-existent tool (custom provider)
-        POST /mcp/test-connection
-        {
-            "provider_type_id": "provider-uuid-123",
-            "credentials": {"TOKEN": "token123"},
-            "tool_metadata": {
-                "command": "npx",
-                "args": ["@notionhq/notion-mcp-server"],
-                "env": {"NOTION_TOKEN": "{{ TOKEN }}"}
-            }
-        }
-    """
     try:
         organization_id, user_id = tenant_context
         result = await run_mcp_authentication_test(
@@ -703,8 +479,6 @@ async def test_mcp_connection(
         logger.warning(f"Invalid request for MCP connection test: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Use handle_mcp_exception to properly handle MCP errors (401, 403, etc.)
-        # This ensures authentication errors are properly mapped and don't log users out
         raise handle_mcp_exception(e, "test-connection")
 
 
@@ -716,28 +490,6 @@ async def create_jira_ticket_from_task_endpoint(
     current_user: User = Depends(require_current_user_or_token),
     _validate_model=Depends(validate_generation_model),
 ):
-    """
-    Create a Jira ticket from a task.
-
-    This endpoint creates a Jira issue using the MCP Jira integration,
-    mapping task fields to Jira issue fields.
-
-    Args:
-        request: CreateJiraTicketFromTaskRequest with task_id and tool_id
-
-    Returns:
-        CreateJiraTicketFromTaskResponse with issue key, URL, and message
-
-    Raises:
-        HTTPException: 400 if validation fails, 500 if creation fails
-
-    Example:
-        POST /mcp/jira/create-ticket-from-task
-        {
-            "task_id": "task-uuid-123",
-            "tool_id": "tool-uuid-456"
-        }
-    """
     try:
         organization_id, user_id = tenant_context
         result = await create_jira_ticket_from_task(
@@ -762,22 +514,6 @@ def get_recent_activities(
     tenant_context=Depends(get_tenant_context),
     current_user: User = Depends(require_current_user_or_token),
 ):
-    """
-    Get recent activities across all trackable entities.
-
-    Returns a unified timeline of CREATE/UPDATE/DELETE operations
-    with complete entity details and user information for entities
-    that inherit ActivityTrackableMixin.
-
-    Args:
-        limit: Maximum number of activities to return (default 50, max 200)
-        db: Database session (injected)
-        tenant_context: Organization and user context (injected)
-        current_user: Current authenticated user (injected)
-
-    Returns:
-        RecentActivitiesResponse containing list of activities and total count
-    """
     try:
         organization_id, user_id = tenant_context
         service = RecentActivitiesService()

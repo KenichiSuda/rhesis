@@ -61,7 +61,7 @@ dependencies = [
     "nest_asyncio",
     "numpy",
     "scikit-learn",
-    "torch",
+    # "torch",  # Moved to optional: no macOS Intel (x86_64) wheel available for torch>=2.5
     "jsonfinder>=0.4.2",
     "chonkie>=1.6.1",
 ]

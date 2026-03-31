@@ -17,6 +17,7 @@ import {
   FormHelperText,
   FormControlLabel,
   Switch,
+  Divider,
 } from '@mui/material';
 import { Project } from '@/utils/api-client/interfaces/project';
 import { User } from '@/utils/api-client/interfaces/user';
@@ -24,6 +25,7 @@ import { UsersClient } from '@/utils/api-client/users-client';
 import PersonIcon from '@mui/icons-material/Person';
 import BaseDrawer from '@/components/common/BaseDrawer';
 import { useFormChangeDetection } from '@/hooks/useFormChangeDetection';
+import PromptLanguageSelector from '@/app/(protected)/organizations/settings/components/PromptLanguageForm';
 
 // Import all the available project icons
 import SmartToyIcon from '@mui/icons-material/SmartToy';
@@ -137,12 +139,18 @@ export default function EditDrawer({
   const [users, setUsers] = React.useState<User[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<FormErrors>({});
+
+  // Extract current prompt_languages from project attributes (default to ['en'])
+  const initialLanguages: string[] =
+    (project.attributes?.prompt_languages as string[] | undefined) ?? ['en'];
+
   const [formData, setFormData] = React.useState({
     name: project.name,
     description: project.description || '',
-    owner_id: project.owner?.id || project.owner_id, // Fallback to owner_id field
+    owner_id: project.owner?.id || project.owner_id,
     is_active: project.is_active,
     icon: project.icon || 'SmartToy',
+    prompt_languages: initialLanguages,
   });
 
   const { hasChanges } = useFormChangeDetection({
@@ -152,6 +160,7 @@ export default function EditDrawer({
       owner_id: project.owner?.id || project.owner_id,
       is_active: project.is_active,
       icon: project.icon || 'SmartToy',
+      prompt_languages: initialLanguages,
     },
     currentData: formData,
   });
@@ -159,12 +168,15 @@ export default function EditDrawer({
   // Reset form data when project changes
   React.useEffect(() => {
     if (open) {
+      const langs: string[] =
+        (project.attributes?.prompt_languages as string[] | undefined) ?? ['en'];
       setFormData({
         name: project.name,
         description: project.description || '',
-        owner_id: project.owner?.id || project.owner_id, // Fallback to owner_id field
+        owner_id: project.owner?.id || project.owner_id,
         is_active: project.is_active,
         icon: project.icon || 'SmartToy',
+        prompt_languages: langs,
       });
       setErrors({});
     }
@@ -193,20 +205,12 @@ export default function EditDrawer({
     };
   }, [open, sessionToken]);
 
-  // Memoize event handlers
   const handleTextChange = React.useCallback(
     (field: string) =>
       (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        setFormData(prev => ({
-          ...prev,
-          [field]: event.target.value,
-        }));
-        // Clear error when user types
+        setFormData(prev => ({ ...prev, [field]: event.target.value }));
         if (errors[field as keyof FormErrors]) {
-          setErrors(prev => ({
-            ...prev,
-            [field]: undefined,
-          }));
+          setErrors(prev => ({ ...prev, [field]: undefined }));
         }
       },
     [errors]
@@ -214,16 +218,9 @@ export default function EditDrawer({
 
   const handleSelectChange = React.useCallback(
     (field: string) => (event: SelectChangeEvent<string>) => {
-      setFormData(prev => ({
-        ...prev,
-        [field]: event.target.value,
-      }));
-      // Clear error when user selects
+      setFormData(prev => ({ ...prev, [field]: event.target.value }));
       if (errors[field as keyof FormErrors]) {
-        setErrors(prev => ({
-          ...prev,
-          [field]: undefined,
-        }));
+        setErrors(prev => ({ ...prev, [field]: undefined }));
       }
     },
     [errors]
@@ -231,29 +228,19 @@ export default function EditDrawer({
 
   const handleToggleChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
-      setFormData(prev => ({
-        ...prev,
-        is_active: event.target.checked,
-      }));
-      // Clear error when user selects
-      if (errors.is_active) {
-        setErrors(prev => ({
-          ...prev,
-          is_active: undefined,
-        }));
-      }
+      setFormData(prev => ({ ...prev, is_active: event.target.checked }));
     },
-    [errors]
+    []
   );
 
   const handleIconChange = React.useCallback((icon: string) => {
-    setFormData(prev => ({
-      ...prev,
-      icon: icon,
-    }));
+    setFormData(prev => ({ ...prev, icon }));
   }, []);
 
-  // Validate form before submission
+  const handleLanguagesChange = React.useCallback((languages: string[]) => {
+    setFormData(prev => ({ ...prev, prompt_languages: languages }));
+  }, []);
+
   const validateForm = React.useCallback(() => {
     const newErrors: FormErrors = {};
 
@@ -267,7 +254,7 @@ export default function EditDrawer({
       newErrors.description = 'Description must be less than 500 characters';
     }
 
-    if (!formData.owner_id || formData.owner_id.trim() === '') {
+    if (!formData.owner_id || String(formData.owner_id).trim() === '') {
       newErrors.owner_id = 'Owner is required';
     }
 
@@ -280,59 +267,39 @@ export default function EditDrawer({
   }, [formData]);
 
   const handleSaveWrapper = React.useCallback(async () => {
-    if (!validateForm()) {
-      return;
-    }
-
-    if (!hasChanges) {
-      return;
-    }
+    if (!validateForm() || !hasChanges) return;
 
     setLoading(true);
     try {
-      // Create a clean update object with only explicitly set fields
       const projectUpdate: Partial<Project> = {};
 
-      if (formData.name) {
-        projectUpdate.name = formData.name;
-      }
+      if (formData.name) projectUpdate.name = formData.name;
+      if (formData.description !== undefined) projectUpdate.description = formData.description;
+      if (formData.owner_id !== undefined) projectUpdate.owner_id = formData.owner_id;
+      if (formData.is_active !== undefined) projectUpdate.is_active = formData.is_active;
+      if (formData.icon) projectUpdate.icon = formData.icon;
 
-      if (formData.description !== undefined) {
-        projectUpdate.description = formData.description;
-      }
-
-      if (formData.owner_id !== undefined) {
-        projectUpdate.owner_id = formData.owner_id;
-      }
-
-      if (formData.is_active !== undefined) {
-        projectUpdate.is_active = formData.is_active;
-      }
-
-      if (formData.icon) {
-        projectUpdate.icon = formData.icon;
-      }
+      // Merge prompt_languages into attributes (preserve other attributes fields)
+      projectUpdate.attributes = {
+        ...(project.attributes || {}),
+        prompt_languages: formData.prompt_languages,
+      };
 
       await onSave(projectUpdate);
       onClose();
     } catch (_error) {
-      // Show generic error if backend doesn't provide specific ones
-      setErrors(prev => ({
-        ...prev,
-        form: 'Failed to save. Please try again.',
-      }));
+      setErrors(prev => ({ ...prev, form: 'Failed to save. Please try again.' }));
     } finally {
       setLoading(false);
     }
-  }, [formData, validateForm, onSave, onClose, hasChanges]);
+  }, [formData, validateForm, onSave, onClose, hasChanges, project.attributes]);
 
-  // Memoize select rendering for performance
   const renderUserSelect = React.useMemo(
     () => (
       <FormControl fullWidth error={!!errors.owner_id}>
         <InputLabel>Owner</InputLabel>
         <Select
-          value={formData.owner_id || ''}
+          value={String(formData.owner_id || '')}
           label="Owner"
           onChange={handleSelectChange('owner_id')}
           renderValue={selected => {
@@ -346,9 +313,7 @@ export default function EditDrawer({
                 >
                   <PersonIcon />
                 </Avatar>
-                <Typography>
-                  {selectedUser.name || selectedUser.email}
-                </Typography>
+                <Typography>{selectedUser.name || selectedUser.email}</Typography>
               </Box>
             ) : null;
           }}
@@ -426,6 +391,14 @@ export default function EditDrawer({
             />
           }
           label="Active Project"
+        />
+
+        <Divider />
+
+        {/* Prompt Generation Languages */}
+        <PromptLanguageSelector
+          value={formData.prompt_languages}
+          onChange={handleLanguagesChange}
         />
       </Stack>
     </BaseDrawer>

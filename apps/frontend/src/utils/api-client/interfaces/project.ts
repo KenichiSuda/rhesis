@@ -10,6 +10,16 @@ export type ProjectUseCase = 'chatbot' | 'assistant' | 'advisor' | 'other';
 export type SortOrder = 'asc' | 'desc';
 
 /**
+ * Project attributes stored in the JSONB attributes column.
+ * New fields should be added here rather than as top-level model columns.
+ */
+export interface ProjectAttributes {
+  /** Language codes for generated test prompts (e.g. ['en', 'ja']) */
+  prompt_languages?: string[];
+  [key: string]: unknown;
+}
+
+/**
  * Base interface for common project properties
  * These are the core properties recognized by the backend API
  */
@@ -17,15 +27,14 @@ export interface ProjectBase {
   name: string;
   description?: string;
   is_active?: boolean;
-  user_id?: UUID | string; // Allow string for mock data compatibility
-  owner_id?: UUID | string; // Allow string for mock data compatibility
-  organization_id?: UUID | string; // Allow string for mock data compatibility
-  attributes?: Record<string, any>;
+  user_id?: UUID | string;
+  owner_id?: UUID | string;
+  organization_id?: UUID | string;
+  attributes?: ProjectAttributes;
 }
 
 /**
  * Interface for project query parameters
- * Used when fetching lists of projects
  */
 export interface ProjectsQueryParams {
   skip?: number;
@@ -36,8 +45,7 @@ export interface ProjectsQueryParams {
 }
 
 /**
- * Interface for project creation, extends base
- * This is what gets sent to the API when creating a project
+ * Interface for project creation
  */
 export interface ProjectCreate extends ProjectBase {
   icon?: string;
@@ -45,7 +53,6 @@ export interface ProjectCreate extends ProjectBase {
 
 /**
  * Interface for project updates, all fields optional
- * Used when updating an existing project
  */
 export type ProjectUpdate = Partial<ProjectBase>;
 
@@ -53,24 +60,24 @@ export type ProjectUpdate = Partial<ProjectBase>;
  * User interface for nested objects in project responses
  */
 export interface ProjectUser {
-  id: UUID | string; // Allow string for mock data compatibility
+  id: UUID | string;
   name: string;
   email: string;
   family_name: string;
   given_name: string;
   picture: string;
-  organization_id: UUID | string; // Allow string for mock data compatibility
+  organization_id: UUID | string;
 }
 
 /**
  * Organization interface for nested objects in project responses
  */
 export interface ProjectOrganization {
-  id: UUID | string; // Allow string for mock data compatibility
+  id: UUID | string;
   name: string;
   description: string;
   email: string;
-  user_id: UUID | string; // Allow string for mock data compatibility
+  user_id: UUID | string;
 }
 
 /**
@@ -102,14 +109,13 @@ export interface ProjectEntity {
 
 /**
  * Frontend-specific fields that aren't part of the backend model
- * These are used for UI purposes only
  */
 export interface ProjectFrontendFields {
-  environment?: ProjectEnvironment | string; // Allow string for mock data compatibility
-  useCase?: ProjectUseCase | string; // Allow string for mock data compatibility
+  environment?: ProjectEnvironment | string;
+  useCase?: ProjectUseCase | string;
   icon?: string;
   tags?: string[];
-  createdAt?: string; // For backward compatibility
+  createdAt?: string;
   system?: ProjectSystem;
   agents?: ProjectAgent[];
   requirements?: ProjectEntity[];
@@ -119,16 +125,13 @@ export interface ProjectFrontendFields {
 
 /**
  * Full project model as returned by the API
- * Combines backend fields with nested objects and frontend-specific fields
  */
 export interface Project extends ProjectBase, ProjectFrontendFields {
-  id: UUID | string; // Allow string for mock data compatibility
+  id: UUID | string;
 
-  // Include standard timestamps if they exist in the API response
   created_at?: string;
   updated_at?: string;
 
-  // Nested objects from API response
   user: ProjectUser;
   owner: ProjectUser;
   organization: ProjectOrganization;

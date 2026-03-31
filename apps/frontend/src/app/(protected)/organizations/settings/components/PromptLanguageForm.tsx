@@ -4,17 +4,10 @@ import React, { useState } from 'react';
 import {
   Box,
   Typography,
-  Button,
-  Alert,
-  CircularProgress,
   Chip,
-  Paper,
   Divider,
 } from '@mui/material';
-import { Save as SaveIcon, Translate as TranslateIcon } from '@mui/icons-material';
-import { ApiClientFactory } from '@/utils/api-client/client-factory';
-import { UserSettings } from '@/utils/api-client/interfaces/user';
-import { useNotifications } from '@/components/common/NotificationContext';
+import { Translate as TranslateIcon } from '@mui/icons-material';
 
 // Supported languages for prompt generation
 export const SUPPORTED_PROMPT_LANGUAGES: { code: string; label: string; nativeLabel: string }[] = [
@@ -30,95 +23,51 @@ export const SUPPORTED_PROMPT_LANGUAGES: { code: string; label: string; nativeLa
   { code: 'nl', label: 'Dutch', nativeLabel: 'Nederlands' },
 ];
 
-interface PromptLanguageFormProps {
-  userSettings: UserSettings | null;
-  sessionToken: string;
-  onUpdate?: (updatedSettings: UserSettings) => void;
+interface PromptLanguageSelectorProps {
+  /** Current selected language codes (e.g. ['en', 'ja']) */
+  value: string[];
+  /** Called whenever the selection changes */
+  onChange: (languages: string[]) => void;
 }
 
-export default function PromptLanguageForm({
-  userSettings,
-  sessionToken,
-  onUpdate,
-}: PromptLanguageFormProps) {
-  const notifications = useNotifications();
-
-  const initialLanguages =
-    userSettings?.localization?.prompt_languages ?? ['en'];
-
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(initialLanguages);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const hasChanges =
-    JSON.stringify([...selectedLanguages].sort()) !==
-    JSON.stringify([...initialLanguages].sort());
-
-  const toggleLanguage = (code: string) => {
-    setError(null);
-    setSelectedLanguages(prev => {
-      if (prev.includes(code)) {
-        // Prevent deselecting the last language
-        if (prev.length === 1) return prev;
-        return prev.filter(l => l !== code);
-      }
-      return [...prev, code];
-    });
-  };
-
-  const handleSave = async () => {
-    if (selectedLanguages.length === 0) {
-      setError('At least one language must be selected.');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const apiFactory = new ApiClientFactory(sessionToken);
-      const usersClient = apiFactory.getUsersClient();
-
-      const updated = await usersClient.updateUserSettings({
-        localization: {
-          ...userSettings?.localization,
-          prompt_languages: selectedLanguages,
-        },
-      });
-
-      notifications.show('Prompt language settings saved.', { severity: 'success' });
-      onUpdate?.(updated);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save settings.';
-      setError(message);
-      notifications.show(message, { severity: 'error' });
-    } finally {
-      setSaving(false);
+/**
+ * Inline language chip selector for use inside a form/drawer.
+ * Does NOT save to the API itself — the parent is responsible for saving.
+ */
+export default function PromptLanguageSelector({
+  value,
+  onChange,
+}: PromptLanguageSelectorProps) {
+  const toggle = (code: string) => {
+    if (value.includes(code)) {
+      // Prevent deselecting the last language
+      if (value.length === 1) return;
+      onChange(value.filter(l => l !== code));
+    } else {
+      onChange([...value, code]);
     }
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+    <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <TranslateIcon color="action" fontSize="small" />
-        <Typography variant="h6" fontWeight={500}>
+        <Typography variant="subtitle2" fontWeight={500}>
           Prompt Generation Languages
         </Typography>
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-        Select the language(s) you want generated test prompts to be written in. When multiple
-        languages are selected, tests are distributed evenly across all chosen languages.
-        At least one language must be selected.
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        Select the language(s) for generated test prompts. At least one is required.
       </Typography>
 
-      <Divider sx={{ mb: 2.5 }} />
+      <Divider sx={{ mb: 1.5 }} />
 
-      {/* Language chip grid */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 3 }}>
+      {/* Language chips */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
         {SUPPORTED_PROMPT_LANGUAGES.map(lang => {
-          const isSelected = selectedLanguages.includes(lang.code);
-          const isLastSelected = isSelected && selectedLanguages.length === 1;
+          const isSelected = value.includes(lang.code);
+          const isLastSelected = isSelected && value.length === 1;
 
           return (
             <Chip
@@ -133,7 +82,7 @@ export default function PromptLanguageForm({
                   </Typography>
                 </Box>
               }
-              onClick={() => toggleLanguage(lang.code)}
+              onClick={() => toggle(lang.code)}
               disabled={isLastSelected}
               variant={isSelected ? 'filled' : 'outlined'}
               color={isSelected ? 'primary' : 'default'}
@@ -153,37 +102,16 @@ export default function PromptLanguageForm({
         })}
       </Box>
 
-      {/* Selection summary */}
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-        {selectedLanguages.length === 1
+      {/* Summary text */}
+      <Typography variant="body2" color="text.secondary">
+        {value.length === 1
           ? `Prompts will be generated in ${
-              SUPPORTED_PROMPT_LANGUAGES.find(l => l.code === selectedLanguages[0])?.label ??
-              selectedLanguages[0]
+              SUPPORTED_PROMPT_LANGUAGES.find(l => l.code === value[0])?.label ?? value[0]
             }.`
-          : `Prompts will be generated in ${selectedLanguages.length} languages: ${selectedLanguages
-              .map(
-                code =>
-                  SUPPORTED_PROMPT_LANGUAGES.find(l => l.code === code)?.label ?? code
-              )
+          : `Prompts will be generated in ${value.length} languages: ${value
+              .map(code => SUPPORTED_PROMPT_LANGUAGES.find(l => l.code === code)?.label ?? code)
               .join(', ')}.`}
       </Typography>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-          onClick={handleSave}
-          disabled={saving || !hasChanges}
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-      </Box>
-    </Paper>
+    </Box>
   );
 }
