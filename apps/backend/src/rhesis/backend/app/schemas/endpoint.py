@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import UUID4, BaseModel, ConfigDict, field_validator
 
@@ -81,7 +81,8 @@ class EndpointBase(Base):
     endpoint_path: Optional[str] = None
     request_headers: Optional[Dict[str, str]] = None
     query_params: Optional[Dict[str, Any]] = None
-    request_mapping: Optional[Dict[str, Any]] = None
+    request_mapping: Optional[Union[Dict[str, Any], str]] = None
+    request_mapping_type: Optional[str] = "json"
     input_mappings: Optional[Dict[str, Any]] = None
 
     # Response Handling
@@ -133,7 +134,8 @@ class EndpointTestRequest(Base):
     url: str
     method: str
     request_headers: Dict[str, str]
-    request_mapping: Dict[str, Any]
+    request_mapping: Union[Dict[str, Any], str]
+    request_mapping_type: Optional[str] = "json"
     response_mapping: Dict[str, str]
     auth_type: EndpointAuthType
     auth_token: str
@@ -196,7 +198,8 @@ class Endpoint(Base):
     endpoint_path: Optional[str] = None
     request_headers: Optional[Dict[str, str]] = None
     query_params: Optional[Dict[str, Any]] = None
-    request_mapping: Optional[Dict[str, Any]] = None
+    request_mapping: Optional[Union[Dict[str, Any], str]] = None
+    request_mapping_type: Optional[str] = "json"
     input_mappings: Optional[Dict[str, Any]] = None
 
     # Response Handling

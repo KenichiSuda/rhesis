@@ -37,6 +37,7 @@ class Endpoint(Base, ActivityTrackableMixin, TagsMixin):
     request_headers = Column(JSON)
     query_params = Column(JSON)
     request_mapping = Column(JSON)
+    request_mapping_type = Column(String, nullable=True, default="json")
     input_mappings = Column(JSON)
 
     # Response Handling

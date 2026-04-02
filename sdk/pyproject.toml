@@ -61,7 +61,7 @@ dependencies = [
     "nest_asyncio",
     "numpy",
     "scikit-learn",
-    "torch",
+    "torch; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "jsonfinder>=0.4.2",
     "chonkie>=1.6.1",
 ]

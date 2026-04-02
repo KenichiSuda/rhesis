@@ -24,6 +24,8 @@ import {
   IconButton,
   InputAdornment,
   Switch,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import dynamic from 'next/dynamic';
@@ -198,6 +200,9 @@ export default function EndpointDetail({
   const [requestMappingString, setRequestMappingString] = useState<string>('');
   const [responseMappingString, setResponseMappingString] =
     useState<string>('');
+  const [requestMappingType, setRequestMappingType] = useState<'json' | 'plaintext'>(
+    (initialEndpoint.request_mapping_type as 'json' | 'plaintext') || 'json'
+  );
 
   // Determine editor theme based on MUI theme
   const editorTheme = theme.palette.mode === 'dark' ? 'vs-dark' : 'light';
@@ -288,9 +293,17 @@ export default function EndpointDetail({
     setRequestHeadersString(
       JSON.stringify(endpoint.request_headers || {}, null, 2)
     );
-    setRequestMappingString(
-      JSON.stringify(endpoint.request_mapping || {}, null, 2)
-    );
+    const currentMappingType = (endpoint.request_mapping_type as 'json' | 'plaintext') || 'json';
+    setRequestMappingType(currentMappingType);
+    if (currentMappingType === 'plaintext') {
+      setRequestMappingString(
+        typeof endpoint.request_mapping === 'string' ? endpoint.request_mapping : ''
+      );
+    } else {
+      setRequestMappingString(
+        JSON.stringify(endpoint.request_mapping || {}, null, 2)
+      );
+    }
     setResponseMappingString(
       JSON.stringify(endpoint.response_mapping || {}, null, 2)
     );
@@ -304,6 +317,7 @@ export default function EndpointDetail({
     setRequestHeadersString('');
     setRequestMappingString('');
     setResponseMappingString('');
+    setRequestMappingType((endpoint.request_mapping_type as 'json' | 'plaintext') || 'json');
   };
 
   const handleSave = async () => {
@@ -319,7 +333,9 @@ export default function EndpointDetail({
       const result = await updateEndpoint(endpoint.id, payload);
 
       if (result.success) {
-        setEndpoint({ ...endpoint, ...editedValues });
+        const updatedEndpoint = { ...endpoint, ...editedValues };
+        setEndpoint(updatedEndpoint);
+        setRequestMappingType((updatedEndpoint.request_mapping_type as 'json' | 'plaintext') || 'json');
         setIsEditing(false);
         setEditedValues({});
         setTokenFieldFocused(false); // Reset token field state
@@ -409,6 +425,12 @@ export default function EndpointDetail({
       setRequestMappingString(value);
     } else if (field === 'response_mapping') {
       setResponseMappingString(value);
+    }
+
+    // For request_mapping in plaintext mode, always update editedValues as string
+    if (field === 'request_mapping' && requestMappingType === 'plaintext') {
+      setEditedValues(prev => ({ ...prev, [field]: value }));
+      return;
     }
 
     // Try to parse and update editedValues only if valid JSON
@@ -1359,14 +1381,16 @@ export default function EndpointDetail({
               </Typography>
               <Box sx={editorWrapperStyle}>
                 <Editor
-                  key={`request-body-${editorTheme}`}
+                  key={`request-body-${editorTheme}-${requestMappingType}`}
                   height="300px"
-                  defaultLanguage="json"
+                  defaultLanguage={requestMappingType === 'plaintext' ? 'plaintext' : 'json'}
                   theme={editorTheme}
                   value={
                     isEditing
                       ? requestMappingString
-                      : JSON.stringify(endpoint.request_mapping || {}, null, 2)
+                      : requestMappingType === 'plaintext'
+                        ? (typeof endpoint.request_mapping === 'string' ? endpoint.request_mapping : '')
+                        : JSON.stringify(endpoint.request_mapping || {}, null, 2)
                   }
                   onChange={value =>
                     handleJsonChange('request_mapping', value || '')
@@ -1378,6 +1402,32 @@ export default function EndpointDetail({
                     scrollBeyondLastLine: false,
                   }}
                 />
+              </Box>
+              <Box sx={{ mt: 1 }}>
+                <ToggleButtonGroup
+                  value={requestMappingType}
+                  exclusive
+                  size="small"
+                  disabled={!isEditing}
+                  onChange={(_e, val) => {
+                    if (val !== null && isEditing) {
+                      const newType = val as 'json' | 'plaintext';
+                      setRequestMappingType(newType);
+                      handleChange('request_mapping_type', newType);
+                      // Reset editor content when switching modes
+                      if (newType === 'plaintext') {
+                        setRequestMappingString('');
+                        setEditedValues(prev => ({ ...prev, request_mapping: '', request_mapping_type: 'plaintext' }));
+                      } else {
+                        setRequestMappingString('{}');
+                        setEditedValues(prev => ({ ...prev, request_mapping: {}, request_mapping_type: 'json' }));
+                      }
+                    }
+                  }}
+                >
+                  <ToggleButton value="json">JSON</ToggleButton>
+                  <ToggleButton value="plaintext">Plain Text</ToggleButton>
+                </ToggleButtonGroup>
               </Box>
             </Grid>
           </Grid>

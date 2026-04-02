@@ -125,12 +125,19 @@ class RestEndpointInvoker(BaseEndpointInvoker):
 
         # Prepare headers and body
         headers = self._prepare_headers(db, endpoint, input_data)
-        request_body = self.template_renderer.render(
-            endpoint.request_mapping or {}, template_context
-        )
 
-        # Strip reserved meta keys (e.g. system_prompt) from the wire body
-        self._strip_meta_keys(request_body)
+        request_mapping_type = getattr(endpoint, "request_mapping_type", "json") or "json"
+        if request_mapping_type == "plaintext" and isinstance(endpoint.request_mapping, str):
+            # Render Jinja2 template and keep as plain text string
+            from jinja2 import Template as _Template
+
+            request_body = _Template(endpoint.request_mapping).render(**template_context)
+        else:
+            request_body = self.template_renderer.render(
+                endpoint.request_mapping or {}, template_context
+            )
+            # Strip reserved meta keys (e.g. system_prompt) from the wire body
+            self._strip_meta_keys(request_body)
 
         # Extract conversation ID from rendered body
         conversation_id = None
@@ -263,7 +270,11 @@ class RestEndpointInvoker(BaseEndpointInvoker):
 
         # Ensure Content-Type is set
         if "Content-Type" not in headers:
-            headers["Content-Type"] = "application/json"
+            request_mapping_type = getattr(endpoint, "request_mapping_type", "json") or "json"
+            if request_mapping_type == "plaintext":
+                headers["Content-Type"] = "text/plain"
+            else:
+                headers["Content-Type"] = "application/json"
 
         # Add auth_token if auth is configured (legacy auth_token placeholder support)
         # If no auth_type is set but auth_token exists, assume bearer token
@@ -310,13 +321,26 @@ class RestEndpointInvoker(BaseEndpointInvoker):
     ) -> httpx.Response:
         """Make an async HTTP request. Retried on transient failures."""
         async with httpx.AsyncClient(timeout=30.0) as client:
-            if method == "GET":
-                return await client.get(url, headers=headers, params=body)
-            elif method == "POST":
-                return await client.post(url, headers=headers, json=body)
-            elif method == "PUT":
-                return await client.put(url, headers=headers, json=body)
-            elif method == "DELETE":
-                return await client.delete(url, headers=headers, json=body)
+            if isinstance(body, str):
+                # Plain text body: send as raw content
+                if method == "GET":
+                    return await client.get(url, headers=headers)
+                elif method == "POST":
+                    return await client.post(url, headers=headers, content=body)
+                elif method == "PUT":
+                    return await client.put(url, headers=headers, content=body)
+                elif method == "DELETE":
+                    return await client.delete(url, headers=headers, content=body)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
             else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+                if method == "GET":
+                    return await client.get(url, headers=headers, params=body)
+                elif method == "POST":
+                    return await client.post(url, headers=headers, json=body)
+                elif method == "PUT":
+                    return await client.put(url, headers=headers, json=body)
+                elif method == "DELETE":
+                    return await client.delete(url, headers=headers, json=body)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")

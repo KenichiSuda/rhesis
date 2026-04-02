@@ -49,7 +49,8 @@ export interface Endpoint {
   endpoint_path?: string;
   request_headers?: Record<string, string>;
   query_params?: Record<string, unknown>;
-  request_mapping?: Record<string, unknown>;
+  request_mapping?: Record<string, unknown> | string;
+  request_mapping_type?: 'json' | 'plaintext';
   input_mappings?: Record<string, unknown>;
 
   // Response Handling
@@ -121,7 +122,8 @@ export interface EndpointTestRequest {
   url: string;
   method: string;
   request_headers: Record<string, string>;
-  request_mapping: Record<string, unknown>;
+  request_mapping: Record<string, unknown> | string;
+  request_mapping_type?: 'json' | 'plaintext';
   response_mapping: Record<string, string>;
   auth_type: 'bearer_token' | 'client_credentials';
   auth_token: string;

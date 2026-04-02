@@ -151,6 +151,7 @@ interface FormData extends Omit<
 > {
   request_headers?: string;
   request_mapping?: string;
+  request_mapping_type?: 'json' | 'plaintext';
   response_mapping?: string;
   auth_token?: string; // Write-only field for create/update
 }
@@ -222,6 +223,7 @@ export default function EndpointForm() {
     auth_token: '',
     request_headers: '{}',
     request_mapping: '{}',
+    request_mapping_type: 'json',
     response_mapping: '{}',
     disable_tracing: false,
   });
@@ -280,6 +282,12 @@ export default function EndpointForm() {
   };
 
   const handleJsonChange = (field: string, value: string) => {
+    // Skip JSON validation for request_mapping when in plaintext mode
+    if (field === 'request_mapping' && formData.request_mapping_type === 'plaintext') {
+      setFormData(prev => ({ ...prev, [field]: value }));
+      setError(null);
+      return;
+    }
     try {
       // Validate JSON if not empty
       if (value.trim()) {
@@ -347,11 +355,16 @@ export default function EndpointForm() {
       for (const field of jsonStringFields) {
         const value = transformedData[field] as string;
         if (value && typeof value === 'string' && value.trim()) {
-          try {
-            (transformedData as Record<string, unknown>)[field] =
-              JSON.parse(value);
-          } catch {
-            delete (transformedData as Record<string, unknown>)[field];
+          // For request_mapping in plaintext mode, keep as raw string
+          if (field === 'request_mapping' && transformedData.request_mapping_type === 'plaintext') {
+            (transformedData as Record<string, unknown>)[field] = value;
+          } else {
+            try {
+              (transformedData as Record<string, unknown>)[field] =
+                JSON.parse(value);
+            } catch {
+              delete (transformedData as Record<string, unknown>)[field];
+            }
           }
         } else {
           delete (transformedData as Record<string, unknown>)[field];
@@ -840,9 +853,9 @@ export default function EndpointForm() {
               </Typography>
               <Box sx={editorWrapperStyle}>
                 <Editor
-                  key={`request-body-${editorTheme}`}
+                  key={`request-body-${editorTheme}-${formData.request_mapping_type}`}
                   height="300px"
-                  defaultLanguage="json"
+                  defaultLanguage={formData.request_mapping_type === 'plaintext' ? 'plaintext' : 'json'}
                   theme={editorTheme}
                   value={formData.request_mapping}
                   onChange={value =>
@@ -864,6 +877,28 @@ export default function EndpointForm() {
                     fontSize: 14,
                   }}
                 />
+              </Box>
+              <Box sx={{ mt: 1 }}>
+                <ToggleButtonGroup
+                  value={formData.request_mapping_type || 'json'}
+                  exclusive
+                  size="small"
+                  onChange={(_e, val) => {
+                    if (val !== null) {
+                      handleChange('request_mapping_type', val as 'json' | 'plaintext');
+                      // Clear editor content when switching modes to avoid confusion
+                      if (val === 'plaintext') {
+                        setFormData(prev => ({ ...prev, request_mapping_type: 'plaintext', request_mapping: '' }));
+                      } else {
+                        setFormData(prev => ({ ...prev, request_mapping_type: 'json', request_mapping: '{}' }));
+                      }
+                      setError(null);
+                    }
+                  }}
+                >
+                  <ToggleButton value="json">JSON</ToggleButton>
+                  <ToggleButton value="plaintext">Plain Text</ToggleButton>
+                </ToggleButtonGroup>
               </Box>
             </Grid>
           </Grid>
@@ -983,7 +1018,7 @@ export default function EndpointForm() {
 
                     // Parse JSON fields
                     let requestHeaders: Record<string, string> = {};
-                    let requestMapping: Record<string, unknown> = {};
+                    let requestMapping: Record<string, unknown> | string = {};
                     let responseMapping: Record<string, string> = {};
 
                     try {
@@ -997,15 +1032,19 @@ export default function EndpointForm() {
                       throw new Error('Invalid JSON in request headers');
                     }
 
-                    try {
-                      if (
-                        formData.request_mapping &&
-                        formData.request_mapping.trim()
-                      ) {
-                        requestMapping = JSON.parse(formData.request_mapping);
+                    if (formData.request_mapping_type === 'plaintext') {
+                      requestMapping = formData.request_mapping || '';
+                    } else {
+                      try {
+                        if (
+                          formData.request_mapping &&
+                          formData.request_mapping.trim()
+                        ) {
+                          requestMapping = JSON.parse(formData.request_mapping);
+                        }
+                      } catch {
+                        throw new Error('Invalid JSON in request mapping');
                       }
-                    } catch {
-                      throw new Error('Invalid JSON in request mapping');
                     }
 
                     try {
@@ -1026,6 +1065,7 @@ export default function EndpointForm() {
                       method: formData.method,
                       request_headers: requestHeaders,
                       request_mapping: requestMapping,
+                      request_mapping_type: formData.request_mapping_type || 'json',
                       response_mapping: responseMapping,
                       auth_type: 'bearer_token' as const,
                       auth_token: formData.auth_token,
