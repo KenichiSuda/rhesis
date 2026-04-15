@@ -50,6 +50,7 @@ export interface Endpoint {
   request_headers?: Record<string, string>;
   query_params?: Record<string, unknown>;
   request_mapping?: Record<string, unknown>;
+  request_body_format?: 'json' | 'plain_text';
   input_mappings?: Record<string, unknown>;
 
   // Response Handling
@@ -129,4 +130,5 @@ export interface EndpointTestRequest {
   endpoint_path?: string;
   query_params?: Record<string, unknown>;
   response_format?: 'json' | 'xml' | 'text';
+  request_body_format?: 'json' | 'plain_text';
 }

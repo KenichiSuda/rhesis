@@ -222,6 +222,7 @@ export default function EndpointForm() {
     auth_token: '',
     request_headers: '{}',
     request_mapping: '{}',
+    request_body_format: 'json',
     response_mapping: '{}',
     disable_tracing: false,
   });
@@ -338,14 +339,27 @@ export default function EndpointForm() {
     try {
       const transformedData = { ...formData } as Partial<typeof formData>;
 
+      // Handle request_mapping: wrap as plain text if format is plain_text
+      const isPlainText = formData.request_body_format === 'plain_text';
+      const requestMappingValue = transformedData.request_mapping as string;
+      if (isPlainText) {
+        if (requestMappingValue && requestMappingValue.trim()) {
+          (transformedData as Record<string, unknown>).request_mapping = {
+            _content: requestMappingValue,
+          };
+        } else {
+          delete (transformedData as Record<string, unknown>).request_mapping;
+        }
+      }
+
       // Handle JSON string fields
       const jsonStringFields = [
         'request_headers',
-        'request_mapping',
+        ...(isPlainText ? [] : ['request_mapping']),
         'response_mapping',
       ] as const;
       for (const field of jsonStringFields) {
-        const value = transformedData[field] as string;
+        const value = transformedData[field as keyof typeof transformedData] as string;
         if (value && typeof value === 'string' && value.trim()) {
           try {
             (transformedData as Record<string, unknown>)[field] =
@@ -830,24 +844,51 @@ export default function EndpointForm() {
               </Box>
             </Grid>
             <Grid size={12}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Request Body Template (Optional)
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2">
+                  Request Body Template (Optional)
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={formData.request_body_format === 'plain_text'}
+                      onChange={e =>
+                        handleChange('request_body_format', e.target.checked ? 'plain_text' : 'json')
+                      }
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {formData.request_body_format === 'plain_text' ? 'Plain Text' : 'JSON'}
+                    </Typography>
+                  }
+                  labelPlacement="start"
+                  sx={{ mr: 0 }}
+                />
+              </Box>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Define request structure with <code>{'{{ placeholder }}'}</code>{' '}
-                for dynamic values. Example:{' '}
-                <code>{`{ "messages": [{ "role": "user", "content": "{{ input }}" }], "temperature": 0.7 }`}</code>
+                {formData.request_body_format === 'plain_text'
+                  ? <>Plain text template with <code>{'{{ placeholder }}'}</code> support. Example: <code>{'{{ input }}'}</code></>
+                  : <>Define request structure with <code>{'{{ placeholder }}'}</code>{' '}
+                    for dynamic values. Example:{' '}
+                    <code>{`{ "messages": [{ "role": "user", "content": "{{ input }}" }], "temperature": 0.7 }`}</code></>
+                }
               </Typography>
               <Box sx={editorWrapperStyle}>
                 <Editor
-                  key={`request-body-${editorTheme}`}
+                  key={`request-body-${editorTheme}-${formData.request_body_format}`}
                   height="300px"
-                  defaultLanguage="json"
+                  defaultLanguage={formData.request_body_format === 'plain_text' ? 'plaintext' : 'json'}
                   theme={editorTheme}
                   value={formData.request_mapping}
-                  onChange={value =>
-                    handleJsonChange('request_mapping', value || '')
-                  }
+                  onChange={value => {
+                    if (formData.request_body_format === 'plain_text') {
+                      setFormData(prev => ({ ...prev, request_mapping: value || '' }));
+                    } else {
+                      handleJsonChange('request_mapping', value || '');
+                    }
+                  }}
                   options={{
                     minimap: { enabled: false },
                     lineNumbers: 'on',

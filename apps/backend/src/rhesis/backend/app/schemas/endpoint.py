@@ -82,6 +82,7 @@ class EndpointBase(Base):
     request_headers: Optional[Dict[str, str]] = None
     query_params: Optional[Dict[str, Any]] = None
     request_mapping: Optional[Dict[str, Any]] = None
+    request_body_format: Optional[str] = None  # "json" or "plain_text"
     input_mappings: Optional[Dict[str, Any]] = None
 
     # Response Handling
@@ -143,6 +144,7 @@ class EndpointTestRequest(Base):
     endpoint_path: Optional[str] = None
     query_params: Optional[Dict[str, Any]] = None
     response_format: EndpointResponseFormat = EndpointResponseFormat.JSON
+    request_body_format: Optional[str] = None  # "json" or "plain_text"
 
     @field_validator("connection_type")
     @classmethod
@@ -197,6 +199,7 @@ class Endpoint(Base):
     request_headers: Optional[Dict[str, str]] = None
     query_params: Optional[Dict[str, Any]] = None
     request_mapping: Optional[Dict[str, Any]] = None
+    request_body_format: Optional[str] = None  # "json" or "plain_text"
     input_mappings: Optional[Dict[str, Any]] = None
 
     # Response Handling

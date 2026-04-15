@@ -421,6 +421,7 @@ class EndpointService:
                 request_headers=test_config.request_headers,
                 query_params=test_config.query_params,
                 request_mapping=test_config.request_mapping,
+                request_body_format=test_config.request_body_format,
                 response_mapping=test_config.response_mapping,
                 response_format=response_format_str,
                 auth_type=auth_type_str,

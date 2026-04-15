@@ -124,13 +124,20 @@ class RestEndpointInvoker(BaseEndpointInvoker):
         )
 
         # Prepare headers and body
-        headers = self._prepare_headers(db, endpoint, input_data)
-        request_body = self.template_renderer.render(
-            endpoint.request_mapping or {}, template_context
-        )
+        is_plain_text = (endpoint.request_body_format or "json") == "plain_text"
+        headers = self._prepare_headers(db, endpoint, input_data, is_plain_text)
 
-        # Strip reserved meta keys (e.g. system_prompt) from the wire body
-        self._strip_meta_keys(request_body)
+        if is_plain_text:
+            raw_template = (endpoint.request_mapping or {}).get("_content", "")
+            request_body = self.template_renderer.render(raw_template, template_context)
+            if not isinstance(request_body, str):
+                request_body = str(request_body)
+        else:
+            request_body = self.template_renderer.render(
+                endpoint.request_mapping or {}, template_context
+            )
+            # Strip reserved meta keys (e.g. system_prompt) from the wire body
+            self._strip_meta_keys(request_body)
 
         # Extract conversation ID from rendered body
         conversation_id = None
@@ -256,14 +263,18 @@ class RestEndpointInvoker(BaseEndpointInvoker):
             )
 
     def _prepare_headers(
-        self, db: Session, endpoint: Endpoint, input_data: Dict[str, Any] = None
+        self,
+        db: Session,
+        endpoint: Endpoint,
+        input_data: Dict[str, Any] = None,
+        is_plain_text: bool = False,
     ) -> Dict[str, str]:
         """Prepare request headers with proper authentication and context injection."""
         headers = (endpoint.request_headers or {}).copy()
 
         # Ensure Content-Type is set
         if "Content-Type" not in headers:
-            headers["Content-Type"] = "application/json"
+            headers["Content-Type"] = "text/plain" if is_plain_text else "application/json"
 
         # Add auth_token if auth is configured (legacy auth_token placeholder support)
         # If no auth_type is set but auth_token exists, assume bearer token
@@ -309,14 +320,21 @@ class RestEndpointInvoker(BaseEndpointInvoker):
         body: Any,
     ) -> httpx.Response:
         """Make an async HTTP request. Retried on transient failures."""
+        is_plain_text_body = isinstance(body, str)
         async with httpx.AsyncClient(timeout=30.0) as client:
             if method == "GET":
                 return await client.get(url, headers=headers, params=body)
             elif method == "POST":
+                if is_plain_text_body:
+                    return await client.post(url, headers=headers, content=body)
                 return await client.post(url, headers=headers, json=body)
             elif method == "PUT":
+                if is_plain_text_body:
+                    return await client.put(url, headers=headers, content=body)
                 return await client.put(url, headers=headers, json=body)
             elif method == "DELETE":
+                if is_plain_text_body:
+                    return await client.delete(url, headers=headers, content=body)
                 return await client.delete(url, headers=headers, json=body)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")

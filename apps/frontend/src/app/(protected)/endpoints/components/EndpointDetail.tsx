@@ -198,6 +198,9 @@ export default function EndpointDetail({
   const [requestMappingString, setRequestMappingString] = useState<string>('');
   const [responseMappingString, setResponseMappingString] =
     useState<string>('');
+  const [requestBodyFormat, setRequestBodyFormat] = useState<'json' | 'plain_text'>(
+    (endpoint.request_body_format as 'json' | 'plain_text') ?? 'json'
+  );
 
   // Determine editor theme based on MUI theme
   const editorTheme = theme.palette.mode === 'dark' ? 'vs-dark' : 'light';
@@ -228,9 +231,20 @@ export default function EndpointDetail({
   const hasExistingToken = !!endpoint.id;
   const [testResponse, setTestResponse] = useState<string>('');
   const [isTestingEndpoint, setIsTestingEndpoint] = useState(false);
-  const [testInput, setTestInput] = useState<string>(`{
-  "input": "[place your input here]"
-}`);
+  const [testInput, setTestInput] = useState<string>(() =>
+    (endpoint.request_body_format as 'json' | 'plain_text') === 'plain_text'
+      ? '[place your input here]'
+      : `{\n  "input": "[place your input here]"\n}`
+  );
+
+  // Reset testInput when request body format changes
+  useEffect(() => {
+    setTestInput(
+      requestBodyFormat === 'plain_text'
+        ? '[place your input here]'
+        : `{\n  "input": "[place your input here]"\n}`
+    );
+  }, [requestBodyFormat]);
 
   // Add projects state and loading state
   const [projects, setProjects] = useState<Record<string, Project>>({});
@@ -283,14 +297,21 @@ export default function EndpointDetail({
 
   const handleEdit = () => {
     setIsEditing(true);
-    setEditedValues(endpoint);
+    const format = (endpoint.request_body_format as 'json' | 'plain_text') ?? 'json';
+    setEditedValues({ ...endpoint, request_body_format: format });
+    setRequestBodyFormat(format);
     // Initialize JSON editor strings from endpoint objects
     setRequestHeadersString(
       JSON.stringify(endpoint.request_headers || {}, null, 2)
     );
-    setRequestMappingString(
-      JSON.stringify(endpoint.request_mapping || {}, null, 2)
-    );
+    if (format === 'plain_text') {
+      const mapping = endpoint.request_mapping as Record<string, unknown> | undefined;
+      setRequestMappingString(String(mapping?._content ?? ''));
+    } else {
+      setRequestMappingString(
+        JSON.stringify(endpoint.request_mapping || {}, null, 2)
+      );
+    }
     setResponseMappingString(
       JSON.stringify(endpoint.response_mapping || {}, null, 2)
     );
@@ -300,6 +321,7 @@ export default function EndpointDetail({
     setIsEditing(false);
     setEditedValues({});
     setTokenFieldFocused(false); // Reset token field state
+    setRequestBodyFormat((endpoint.request_body_format as 'json' | 'plain_text') ?? 'json');
     // Reset JSON editor strings
     setRequestHeadersString('');
     setRequestMappingString('');
@@ -407,6 +429,10 @@ export default function EndpointDetail({
       setRequestHeadersString(value);
     } else if (field === 'request_mapping') {
       setRequestMappingString(value);
+      if (requestBodyFormat === 'plain_text') {
+        setEditedValues(prev => ({ ...prev, request_mapping: { _content: value } }));
+        return;
+      }
     } else if (field === 'response_mapping') {
       setResponseMappingString(value);
     }
@@ -417,6 +443,33 @@ export default function EndpointDetail({
       setEditedValues(prev => ({ ...prev, [field]: parsedValue }));
     } catch {
       // Don't update editedValues if JSON is invalid - wait for user to fix it
+    }
+  };
+
+  const handleRequestBodyFormatChange = (isPlainText: boolean) => {
+    const newFormat = isPlainText ? 'plain_text' : 'json';
+    setRequestBodyFormat(newFormat);
+    autoEnableEditMode();
+    setEditedValues(prev => ({ ...prev, request_body_format: newFormat }));
+    // Reset the editor content when switching modes
+    if (isPlainText) {
+      const current = requestMappingString;
+      // Try to extract _content if currently valid JSON with _content key
+      try {
+        const parsed = JSON.parse(current);
+        if (typeof parsed._content === 'string') {
+          setRequestMappingString(parsed._content);
+          setEditedValues(prev => ({ ...prev, request_mapping: { _content: parsed._content } }));
+          return;
+        }
+      } catch {
+        // Not valid JSON, keep as-is
+      }
+      setEditedValues(prev => ({ ...prev, request_mapping: { _content: current } }));
+    } else {
+      // Switching from plain text to JSON: wrap existing text back as JSON or reset
+      setRequestMappingString('{}');
+      setEditedValues(prev => ({ ...prev, request_mapping: {} }));
     }
   };
 
@@ -1354,19 +1407,40 @@ export default function EndpointDetail({
             )}
 
             <Grid size={12}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Request Mapping
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle2">
+                  Request Mapping
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={requestBodyFormat === 'plain_text'}
+                      onChange={e => handleRequestBodyFormatChange(e.target.checked)}
+                      disabled={!isEditing}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      {requestBodyFormat === 'plain_text' ? 'Plain Text' : 'JSON'}
+                    </Typography>
+                  }
+                  labelPlacement="start"
+                  sx={{ mr: 0 }}
+                />
+              </Box>
               <Box sx={editorWrapperStyle}>
                 <Editor
-                  key={`request-body-${editorTheme}`}
+                  key={`request-body-${editorTheme}-${requestBodyFormat}`}
                   height="300px"
-                  defaultLanguage="json"
+                  defaultLanguage={requestBodyFormat === 'plain_text' ? 'plaintext' : 'json'}
                   theme={editorTheme}
                   value={
                     isEditing
                       ? requestMappingString
-                      : JSON.stringify(endpoint.request_mapping || {}, null, 2)
+                      : requestBodyFormat === 'plain_text'
+                        ? String((endpoint.request_mapping as Record<string, unknown>)?._content ?? '')
+                        : JSON.stringify(endpoint.request_mapping || {}, null, 2)
                   }
                   onChange={value =>
                     handleJsonChange('request_mapping', value || '')
@@ -1428,14 +1502,15 @@ export default function EndpointDetail({
                 Test your endpoint configuration with sample data
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Enter sample JSON data. It will be matched to your request
-                template and parsed using your response mappings.
+                {requestBodyFormat === 'plain_text'
+                  ? 'Enter sample plain text input. It will be used as the input field in your request template.'
+                  : 'Enter sample JSON data. It will be matched to your request template and parsed using your response mappings.'}
               </Typography>
               <Box sx={editorWrapperStyle}>
                 <Editor
-                  key={`test-input-${editorTheme}`}
+                  key={`test-input-${editorTheme}-${requestBodyFormat}`}
                   height="200px"
-                  defaultLanguage="json"
+                  defaultLanguage={requestBodyFormat === 'plain_text' ? 'plaintext' : 'json'}
                   theme={editorTheme}
                   value={testInput}
                   onChange={value => setTestInput(value || '')}
@@ -1458,10 +1533,14 @@ export default function EndpointDetail({
                   setIsTestingEndpoint(true);
                   try {
                     let inputData;
-                    try {
-                      inputData = JSON.parse(testInput);
-                    } catch (_error) {
-                      throw new Error('Invalid JSON input data');
+                    if (requestBodyFormat === 'plain_text') {
+                      inputData = { input: testInput };
+                    } else {
+                      try {
+                        inputData = JSON.parse(testInput);
+                      } catch (_error) {
+                        throw new Error('Invalid JSON input data');
+                      }
                     }
 
                     const result = await invokeEndpoint(endpoint.id, inputData);
